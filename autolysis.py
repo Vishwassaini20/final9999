@@ -92,20 +92,20 @@ def get_ai_story(dataset_summary, dataset_info, visualizations):
 # Function to detect encoding and load data with cleaning
 def load_and_clean_data(filename):
     encoding = detect_encoding(filename)
-    df = pd.read_csv(filename, encoding=encoding)
+    data = pd.read_csv(filename, encoding=encoding)
     
     # Drop rows with all NaN values
-    df.dropna(axis=0, how='all', inplace=True)
+    data.dropna(axis=0, how='all', inplace=True)
     
     # Fill missing values in numeric columns with the mean of the column
-    numeric_columns = df.select_dtypes(include='number')
-    df[numeric_columns.columns] = numeric_columns.fillna(numeric_columns.mean())
+    numeric_columns = data.select_dtypes(include='number')
+    data[numeric_columns.columns] = numeric_columns.fillna(numeric_columns.mean())
     
     # Handle missing values in non-numeric columns (e.g., fill with 'Unknown')
-    non_numeric_columns = df.select_dtypes(exclude='number')
-    df[non_numeric_columns.columns] = non_numeric_columns.fillna('Unknown')
+    non_numeric_columns = data.select_dtypes(exclude='number')
+    data[non_numeric_columns.columns] = non_numeric_columns.fillna('Unknown')
     
-    return df
+    return data
 
 # Function to detect file encoding
 def detect_encoding(file_path):
