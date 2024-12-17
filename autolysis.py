@@ -27,7 +27,6 @@ Original file is located at
 ## outlier analysis along with Visulization using python of any csv files and results of this analysis is shared with LLM Model
 ## to come up with a story and the results are stored a README.md file
 
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -160,8 +159,21 @@ def create_visualizations(df):
 
 
 # Function to generate GPT-4o-Mini analysis story
-def generate_analysis_story(summary, outliers, correlation_matrix, visualizations):
+def generate_analysis_story(summary, outliers, correlation_matrix):
+    # Prepare the prompt with the data
     prompt = f"""
+    Given the following dataset summary:
+    - Shape: {summary['shape']}
+    - Columns: {', '.join(summary['columns'])}
+    - Data Types: {summary['types']}
+    - Descriptive Statistics: {summary['descriptive_statistics']}
+    - Missing values: {summary['missing_values']}
+
+    Additionally, the outliers detected are: {outliers}
+
+    The correlation matrix of the dataset is:
+    {correlation_matrix}
+
     Below is a detailed summary and analysis of a dataset. Please generate a **rich and engaging narrative** about this dataset analysis, including:
 
     1. **The Data Received**: Describe the dataset vividly. What does the data represent? What are its features? What is the significance of this data? Create a compelling story around it.
@@ -170,44 +182,61 @@ def generate_analysis_story(summary, outliers, correlation_matrix, visualization
     4. **Implications and Actions**: Discuss the implications of these findings. How do they influence decisions? What actionable recommendations would you provide based on the analysis?
     5. **Visualizations**: Describe the visualizations included. What do they reveal about the data? How do they complement the analysis and findings?
 
-    **Dataset Summary**:
-    {summary}
-
-    **Outliers**:
-    {outliers}
-
-    **Correlation Analysis**:
-    {correlation_matrix}
-
-    **Visualizations**:
-    {visualizations}
     """
+
+    # Call OpenAI API (GPT-4 or GPT-4o-Mini) to generate the story
     try:
         response = requests.post(
             "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {os.environ['AIPROXY_TOKEN']}"},
-            json={"model": "gpt-4o-mini", "messages": [{"role": "system", "content": prompt}]}
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [
+                    {"role": "system", "content": prompt},
+                ]
+            }
         )
-        story = response.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        story = f"Error generating narrative: {e}"
+        response.raise_for_status()  # Check for request errors
+        result = response.json()
+        story = result["choices"][0]["message"]["content"]
+    except requests.exceptions.RequestException as e:
+        print(f"Error generating analysis story: {e}")
+        return "Error generating analysis story"
+    
     return story
 
+# Function to write the README with analysis story and results
 def write_readme(summary, outliers, correlation_matrix, visualizations, story, filename):
     with open('README.md', 'w') as f:
+        # Header
         f.write(f"# Dataset Analysis of {filename}\n")
+
+        # Dataset Summary
         f.write("\n## Dataset Summary\n")
-        f.write(str(summary))
-        f.write("\n\n## Outlier Detection\n")
-        f.write(str(outliers))
-        f.write("\n\n## Correlation Analysis\n")
-        f.write(str(correlation_matrix))
-        f.write("\n\n## Analysis Narrative\n")
-        f.write(story)
-        f.write("\n\n## Visualizations\n")
+        f.write(f"- Shape of the dataset: {summary['shape']}\n")
+        f.write(f"- Columns: {', '.join(summary['columns'])}\n")
+        f.write(f"- Data types:\n{summary['types']}\n")
+        f.write(f"- Descriptive statistics:\n{summary['descriptive_statistics']}\n")
+        f.write(f"- Missing values per column:\n{summary['missing_values']}\n")
+
+        # Outlier Analysis
+        f.write("\n## Outlier Detection\n")
+        f.write(f"Outliers detected in each numeric column (Z-score > 3):\n{outliers}\n")
+
+        # Correlation Analysis
+        f.write("\n## Correlation Analysis\n")
+        f.write(f"Correlation Matrix:\n{correlation_matrix}\n")
+
+        # Narrative Story (from GPT-4o-Mini)
+        f.write("\n## Dataset Analysis Story\n")
+        f.write(f"{story}\n")
+
+        # Visualizations
+        f.write("\n## Visualizations\n")
         for img in visualizations:
             f.write(f"![{img}]({img})\n")
 
+# Main function
 def main(filename):
     # Load and clean data
     df = load_and_clean_data(filename)
