@@ -27,7 +27,7 @@ Original file is located at
 ## outlier analysis along with Visulization using python of any csv files and results of this analysis is shared with LLM Model
 ## to come up with a story and the results are stored a README.md file
 
-# Updated Python Script for Enhanced Analysis
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,40 +42,65 @@ import requests
 import os
 import chardet
 
+# Set the AIPROXY_TOKEN environment variable if not already set
+if "AIPROXY_TOKEN" not in os.environ:
+    api_key = input("Please enter your OpenAI API key: ")
+    os.environ["AIPROXY_TOKEN"] = api_key
+
+api_key = os.environ["AIPROXY_TOKEN"]
+
+# Function to detect file encoding
 def detect_encoding(filename):
     with open(filename, 'rb') as f:
         result = chardet.detect(f.read())
     return result['encoding']
 
+# Function to load and clean the dataset
 def load_and_clean_data(filename):
     encoding = detect_encoding(filename)
     df = pd.read_csv(filename, encoding=encoding)
+    
+    # Drop rows with all NaN values
     df.dropna(axis=0, how='all', inplace=True)
+    
+    # Fill missing values in numeric columns with the mean of the column
     numeric_columns = df.select_dtypes(include='number')
     df[numeric_columns.columns] = numeric_columns.fillna(numeric_columns.mean())
+    
+    # Handle missing values in non-numeric columns (e.g., fill with 'Unknown')
     non_numeric_columns = df.select_dtypes(exclude='number')
     df[non_numeric_columns.columns] = non_numeric_columns.fillna('Unknown')
+    
     return df
 
+# Function to summarize the dataset
 def summarize_data(df):
-    return {
+    summary = {
         'shape': df.shape,
         'columns': df.columns.tolist(),
         'types': df.dtypes.to_dict(),
-        'descriptive_statistics': df.describe(include='all').to_dict(),
+        'descriptive_statistics': df.describe().to_dict(),
         'missing_values': df.isnull().sum().to_dict()
     }
+    return summary
 
+# Outlier detection function using Z-Score
 def detect_outliers(df):
     numeric_df = df.select_dtypes(include=[np.number])
     z_scores = np.abs(stats.zscore(numeric_df))
-    return {column: int((z_scores[:, idx] > 3).sum()) 
-            for idx, column in enumerate(numeric_df.columns)}
+    outliers = (z_scores > 3).sum(axis=0)
+    outlier_info = {
+        column: int(count) for column, count in zip(numeric_df.columns, outliers)
+    }
+    return outlier_info
 
+# Correlation analysis function
 def correlation_analysis(df):
     numeric_df = df.select_dtypes(include='number')
-    return numeric_df.corr().to_dict()
+    correlation_matrix = numeric_df.corr()
+    return correlation_matrix.to_dict()
 
+# Cluster analysis using KMeans
 def perform_clustering(df, n_clusters=3):
     scaler = StandardScaler()
     df_scaled = scaler.fit_transform(df.select_dtypes(include=[np.number]))
@@ -83,59 +108,58 @@ def perform_clustering(df, n_clusters=3):
     df['Cluster'] = kmeans.fit_predict(df_scaled)
     return df, kmeans
 
+# PCA for dimensionality reduction (optional)
 def perform_pca(df):
     scaler = StandardScaler()
     df_scaled = scaler.fit_transform(df.select_dtypes(include=[np.number]))
     pca = PCA(n_components=2)
-    components = pca.fit_transform(df_scaled)
-    df['PCA1'], df['PCA2'] = components[:, 0], components[:, 1]
+    pca_components = pca.fit_transform(df_scaled)
+    df['PCA1'] = pca_components[:, 0]
+    df['PCA2'] = pca_components[:, 1]
     return df
 
+# Function to create visualizations
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Function to create visualizations
 def create_visualizations(df):
-    numeric_df = df.select_dtypes(include='number')
-    visualizations = []
-
-    # Missing data visualization
+    # Visualization for missing data
+    import missingno as msno
     msno.matrix(df)
-    plt.title('Missing Data Visualization')
-    plt.savefig('missing_data.png')
-    visualizations.append('missing_data.png')
+    plt.tight_layout()  # Adjust layout
+    missing_img = 'missing_data.png'
+    plt.savefig(missing_img)
     plt.close()
 
-    # Correlation heatmap
-    if len(numeric_df.columns) > 1:
+    # Filter numeric columns for correlation heatmap
+    numeric_df = df.select_dtypes(include='number')
+    
+    if numeric_df.shape[1] > 1:  # Ensure there are more than one numeric column for correlation
+        # Correlation heatmap
         plt.figure(figsize=(10, 6))
-        sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm')
-        plt.title('Correlation Matrix')
-        plt.savefig('correlation_matrix.png')
-        visualizations.append('correlation_matrix.png')
+        sns.heatmap(numeric_df.corr(), annot=True, cmap='coolwarm', fmt='.2f')
+        plt.title("Correlation Matrix")
+        correlation_img = 'correlation_matrix.png'
+        plt.tight_layout()  # Adjust layout to prevent warnings
+        plt.savefig(correlation_img)
         plt.close()
+    else:
+        correlation_img = None  # If no numeric columns, set as None
 
-    # Histograms for numeric features
-    numeric_df.hist(figsize=(12, 10), bins=20)
-    plt.suptitle('Distributions of Numeric Columns')
-    plt.savefig('numeric_histograms.png')
-    visualizations.append('numeric_histograms.png')
+    # Cluster visualization (after performing PCA)
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x='PCA1', y='PCA2', hue='Cluster', data=df, palette='Set1')
+    plt.title("Cluster Analysis (PCA)")
+    cluster_img = 'cluster_analysis.png'
+    plt.tight_layout()  # Adjust layout to prevent warnings
+    plt.savefig(cluster_img)
     plt.close()
 
-    # Pair plot for numeric relationships
-    if len(numeric_df.columns) > 1:
-        sns.pairplot(numeric_df.sample(min(500, len(numeric_df))))
-        plt.savefig('pairplot.png')
-        visualizations.append('pairplot.png')
-        plt.close()
+    return [missing_img, correlation_img, cluster_img] if correlation_img else [missing_img, cluster_img]
 
-    # Cluster visualization
-    if 'PCA1' in df.columns and 'PCA2' in df.columns:
-        plt.figure(figsize=(8, 6))
-        sns.scatterplot(x='PCA1', y='PCA2', hue='Cluster', data=df, palette='Set1')
-        plt.title('Cluster Visualization (PCA)')
-        plt.savefig('cluster_visualization.png')
-        visualizations.append('cluster_visualization.png')
-        plt.close()
 
-    return visualizations
-
+# Function to generate GPT-4o-Mini analysis story
 def generate_analysis_story(summary, outliers, correlation_matrix, visualizations):
     prompt = f"""
     Below is a detailed summary and analysis of a dataset. Please generate a **rich and engaging narrative** about this dataset analysis, including:
@@ -185,16 +209,34 @@ def write_readme(summary, outliers, correlation_matrix, visualizations, story, f
             f.write(f"![{img}]({img})\n")
 
 def main(filename):
+    # Load and clean data
     df = load_and_clean_data(filename)
+
+    # Summarize the data
     summary = summarize_data(df)
+
+    # Outlier detection
     outliers = detect_outliers(df)
+
+    # Correlation analysis
     correlation_matrix = correlation_analysis(df)
-    df, _ = perform_clustering(df)
+
+    # Perform clustering
+    df, kmeans = perform_clustering(df)
+
+    # Perform PCA for visualization
     df = perform_pca(df)
+
+    # Create visualizations
     visualizations = create_visualizations(df)
-    story = generate_analysis_story(summary, outliers, correlation_matrix, visualizations)
+
+    # Generate GPT-4o-Mini analysis story
+    story = generate_analysis_story(summary, outliers, correlation_matrix)
+
+    # Write README file
     write_readme(summary, outliers, correlation_matrix, visualizations, story, filename)
-    print("Analysis complete! Results saved in README.md")
+
+    print(f"Analysis complete. Results saved in 'README.md'.")
 
 if __name__ == "__main__":
     import sys
